@@ -26,7 +26,7 @@ function connectToGemini(ws: ServerWebSocket<SessionData>) {
     // Setup inicial: le decimos al modelo quién es y cómo debe responder
     geminiWs.send(JSON.stringify({
       setup: {
-        model: "gemini-3.1-flash-live-preview",
+        model: "models/gemini-3.1-flash-live-preview",
         generationConfig: {
           responseModalities: ["TEXT"]
         },
@@ -58,32 +58,47 @@ Importante:
 - Las coordenadas deben ser absolutas respecto a la screenshot completa (no relativas).
 - Usa siempre números enteros.
 - Si no estás seguro de la posición exacta, poné highlight: null
-- Sé muy preciso con las coordenadas.`
+- Sé muy preciso con las coordenadas.
+Si un paso no requiere click, poné highlight: null.
+`
           }]
         }
       }
     }))
-
-    // Gemini está listo — marcamos y vaciamos la cola de mensajes pendientes
-    ws.data.geminiReady = true
-    for (const msg of ws.data.messageQueue) {
-      geminiWs.send(msg)
-    }
-    ws.data.messageQueue = []
   }
 
   geminiWs.onmessage = (event) => {
-    // Todo lo que responde Gemini va directo al front
+    try {
+      const payload = JSON.parse(event.data as string) as { setupComplete?: object }
+      if (payload.setupComplete) {
+        // Recien aca la sesion Live esta lista para recibir clientContent.
+        ws.data.geminiReady = true
+        for (const msg of ws.data.messageQueue) {
+          geminiWs.send(msg)
+        }
+        ws.data.messageQueue = []
+        return
+      }
+    } catch {
+      // Si no es JSON parseable, igual se reenvia al cliente.
+    }
+
+    console.log("📨 Gemini dice:", event.data)
     ws.send(event.data as string)
   }
 
   geminiWs.onerror = (e) => {
-    console.error("❌ Gemini error:", e)
+    console.error("❌ Gemini error completo:", JSON.stringify(e))
     ws.send(JSON.stringify({ type: "error", error: "Error en conexión con Gemini" }))
   }
 
-  geminiWs.onclose = () => {
-    console.log("🔌 Gemini Live cerrado")
+  geminiWs.onclose = (event) => {
+    const closeReason = event.reason || "Sin reason provisto por el servidor"
+    console.log("🔌 Cerrado — code:", event.code, "reason:", closeReason, "wasClean:", event.wasClean)
+    ws.send(JSON.stringify({
+      type: "error",
+      error: `Gemini WS cerrado (${event.code}): ${closeReason}`
+    }))
     ws.data.geminiReady = false
   }
 
