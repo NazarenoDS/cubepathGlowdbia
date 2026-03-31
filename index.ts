@@ -91,7 +91,7 @@ Importante:
 }
 
 // --- Función que arma el payload para Gemini con screenshot + prompt ---
-function buildGeminiPayload(prompt: string, imageBase64?: string) {
+function buildGeminiPayload(prompt: string, imageBase64?: string, imageWidth?: number, imageHeight?: number) {
   const parts: object[] = [
     { text: prompt || "Seguí el tutorial, ¿qué debo hacer ahora?" }
   ]
@@ -103,6 +103,13 @@ function buildGeminiPayload(prompt: string, imageBase64?: string) {
         mimeType: "image/png",
         data: imageBase64
       }
+    })
+  }
+
+  // ← Nueva parte: le decimos el tamaño real de la captura
+  if (imageWidth && imageHeight) {
+    parts.push({
+      text: `La captura de pantalla tiene ${imageWidth}×${imageHeight} píxeles. Usa estas dimensiones exactas para calcular las coordenadas.`
     })
   }
 
@@ -152,9 +159,11 @@ serve<SessionData>({
         const data = JSON.parse(message.toString()) as {
           prompt?: string
           image?: string  // base64
+          imageWidth?: number
+          imageHeight?: number
         }
 
-        const payload = buildGeminiPayload(data.prompt ?? "", data.image)
+        const payload = buildGeminiPayload(data.prompt ?? "", data.image, data.imageWidth, data.imageHeight);
 
         if (ws.data.geminiReady) {
           // Gemini está listo, mandamos directo
